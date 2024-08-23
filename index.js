@@ -1,39 +1,40 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const readline = require('readline');
 
 // Use Puppeteer Extra with the Stealth Plugin
 puppeteer.use(StealthPlugin());
 
-const kilimallCredentials = {
-    email: 'njigupaul22@gmail.com',
-    password: 'njigupaul22',
-};
+// Create an interface for reading input from the command line
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
 
-const productUrl = 'https://www.kilimall.co.ke/listing/18709976-pafel-humidifier-250ml-mini-ultrasonic-air-humidifiers-romantic-light-usb-essential-oil-diffuser-vehicle-mounted-purifier-led-changing-color-light-aromatic-anion-spray-humidifier-pinks?from=flash-sale&source=homePage-flashSale-';
-const desiredPrice = 1000; // The maximum price you're willing to pay
-
-// Utility function to delay actions
-function delay(time) {
-    return new Promise(resolve => setTimeout(resolve, time));
+// Function to prompt the user for input
+function prompt(question) {
+    return new Promise((resolve) => rl.question(question, resolve));
 }
 
-// Get the current time in milliseconds since Unix epoch
-function getCurrentTime() {
-    return new Date().getTime();
-}
-
-// Calculate the time difference between now and the target time
-function getTimeUntil(targetHour, targetMinute) {
+// Function to get the current time in a readable format
+function getCurrentTimeString() {
     const now = new Date();
-    const target = new Date();
-    target.setHours(targetHour, targetMinute, 0, 0);
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+}
 
-    // If the target time is earlier today, set to the next day
-    if (target.getTime() <= now.getTime()) {
-        target.setDate(target.getDate() + 1);
-    }
+// Function to update the remaining time until the flash sale
+function updateTimeUntilFlashSale(targetHour, targetMinute) {
+    setInterval(() => {
+        const timeUntilSale = getTimeUntil(targetHour, targetMinute);
+        const seconds = Math.floor(timeUntilSale / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const displayMinutes = minutes % 60;
+        const displaySeconds = seconds % 60;
 
-    return target.getTime() - now.getTime();
+        console.log(`Current time: ${getCurrentTimeString()}`);
+        console.log(`Time until flash sale: ${hours}h ${displayMinutes}m ${displaySeconds}s`);
+    }, 1000); // Update every second
 }
 
 // Main function to automate the process
@@ -42,6 +43,20 @@ function getTimeUntil(targetHour, targetMinute) {
     const page = await browser.newPage();
 
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36');
+
+    // Prompt the user for the product URL
+    const productUrl = await prompt('Please enter the product URL: ');
+
+    // Prompt the user for the desired price
+    const desiredPrice = parseFloat(await prompt('Please enter your desired price: '));
+
+    // Prompt the user for the flash sale time
+    const saleHour = parseInt(await prompt('Please enter the flash sale hour (24-hour format, e.g., 10 for 10 AM): '), 10);
+    const saleMinute = parseInt(await prompt('Please enter the flash sale minute (e.g., 0 for the start of the hour): '), 10);
+
+    console.log(`Product URL: ${productUrl}`);
+    console.log(`Desired Price: ${desiredPrice}`);
+    console.log(`Flash Sale Time: ${saleHour}:${saleMinute}`);
 
     // Navigate to Kilimall login page
     await page.goto('https://www.kilimall.co.ke/login', { waitUntil: 'networkidle2' });
@@ -53,8 +68,11 @@ function getTimeUntil(targetHour, targetMinute) {
 
     console.log('Logged in successfully! Preparing for the flash sale...');
 
+    // Start updating the time until the flash sale
+    updateTimeUntilFlashSale(saleHour, saleMinute);
+
     // Calculate time until flash sale starts
-    const timeUntilSale = getTimeUntil(16, 45); // 4:45 PM (16:45)
+    const timeUntilSale = getTimeUntil(saleHour, saleMinute);
 
     console.log(`Waiting ${Math.ceil(timeUntilSale / 1000)} seconds until the flash sale starts.`);
     await delay(timeUntilSale); // Wait until flash sale starts
@@ -62,13 +80,9 @@ function getTimeUntil(targetHour, targetMinute) {
     // Navigate to the product page
     await page.goto(productUrl, { waitUntil: 'networkidle2' });
 
-    let purchaseAttempted = false;
-
     // Function to check the price and attempt a purchase
     async function checkPriceAndPurchase() {
         try {
-            if (purchaseAttempted) return; // Exit if purchase has already been attempted
-
             // Refresh the page to get the latest price
             await page.reload({ waitUntil: 'networkidle2' });
 
@@ -115,9 +129,6 @@ function getTimeUntil(targetHour, targetMinute) {
 
                 console.log('Purchase completed or attempted.');
 
-                // Set flag to true to stop further attempts
-                purchaseAttempted = true;
-
                 // Close the browser after purchase
                 await browser.close();
             } else {
@@ -129,11 +140,35 @@ function getTimeUntil(targetHour, targetMinute) {
     }
 
     // Set an interval to check the price every 5 seconds
-    const intervalId = setInterval(() => {
-        if (purchaseAttempted) {
-            clearInterval(intervalId); // Stop checking if purchase is done
-        } else {
-            checkPriceAndPurchase();
-        }
-    }, 5000);
+    setInterval(checkPriceAndPurchase, 5000);
+
+    // Close the readline interface
+    rl.close();
 })();
+
+// Utility functions
+function delay(time) {
+    return new Promise(resolve => setTimeout(resolve, time));
+}
+
+function getCurrentTime() {
+    return new Date().getTime();
+}
+
+function getCurrentTimeString() {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+}
+
+function getTimeUntil(targetHour, targetMinute) {
+    const now = new Date();
+    const target = new Date();
+    target.setHours(targetHour, targetMinute, 0, 0);
+
+    // If the target time is earlier today, set to the next day
+    if (target.getTime() <= now.getTime()) {
+        target.setDate(target.getDate() + 1);
+    }
+
+    return target.getTime() - now.getTime();
+}
