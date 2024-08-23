@@ -218,17 +218,6 @@ function askQuestion(query) {
                         await checkoutPage.screenshot({ path: 'after-modal-click.png' });
                         console.log('Button clicked inside the modal successfully.');
 
-                        // Wait for navigation or a specific response
-                        try {
-                            console.log('Waiting for navigation or response...');
-                            await checkoutPage.waitForResponse(response =>
-                                response.url().includes('checkout') && response.status() === 200,
-                                { timeout: 120000 } // Increased timeout
-                            );
-                            console.log('Navigation or response detected.');
-                        } catch (error) {
-                            console.error('Navigation or response failed:', error);
-                        }
 
                     } catch (error) {
                         console.error('Modal or button inside the modal not found, not visible, or clicking failed:', error);
@@ -237,7 +226,7 @@ function askQuestion(query) {
 
                     console.log('Purchase completed or attempted.');
                     // Close the browser after purchase
-                    await browser.close();
+                    // await browser.close();
                 } else {
                     console.error('Checkout tab not found.');
                 }
