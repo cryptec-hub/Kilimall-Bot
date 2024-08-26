@@ -6,8 +6,8 @@ const readline = require('readline');
 puppeteer.use(StealthPlugin());
 
 // Utility function to delay execution
-function delay(time) {
-    return new Promise((resolve) => setTimeout(resolve, time));
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Function to calculate the remaining time until the flash sale
@@ -21,7 +21,7 @@ function getTimeUntil(targetHour, targetMinute) {
         target.setDate(target.getDate() + 1);
     }
 
-    return target.getTime() - now.getTime();
+    return target.getTime() - now.getTime() - 100;
 }
 
 // Promisified readline function to ask user input
@@ -43,13 +43,34 @@ function askQuestion(query) {
     const saleHour = parseInt(await askQuestion('Enter the sale hour (24-hour format): '), 10);
     const saleMinute = parseInt(await askQuestion('Enter the sale minute: '), 10);
 
-    // Configure Puppeteer to run in headless mode
-    const browser = await puppeteer.launch({ headless: false });
+    // Configure Puppeteer to run in headless mode and optimize performance
+    const browser = await puppeteer.launch({
+        headless: false,  // Set to false if you want to see the browser UI
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-blink-features=AutomationControlled'
+        ],
+    });
     const page = await browser.newPage();
 
     await page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36'
     );
+
+    // Block images and stylesheets for faster page loading
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+        const blockedTypes = ['image', 'font', 'media', 'websocket'];
+        if (blockedTypes.includes(request.resourceType())) {
+            request.abort();
+        } else {
+            request.continue();
+        }
+    });
 
     // Hardcoded credentials for automated login
     const email = 'njigupaul22@gmail.com'; // Replace with your email
@@ -57,6 +78,15 @@ function askQuestion(query) {
 
     // Navigate to the Kilimall login page
     await page.goto('https://www.kilimall.co.ke/login', { waitUntil: 'networkidle2' });
+
+    // Wait for the login form to load
+    try {
+        await page.waitForSelector('input[name="account"]', { visible: true, timeout: 30000 });
+    } catch (error) {
+        console.error('Login form did not load or selector changed. Please check the website and update the selector.', error);
+        await browser.close();
+        return;
+    }
 
     // Automate the login process
     await page.type('input[name="account"]', email, { delay: 100 });
@@ -68,46 +98,37 @@ function askQuestion(query) {
 
     // Calculate time until flash sale starts
     const timeUntilSale = getTimeUntil(saleHour, saleMinute);
+    const minutes = Math.floor(timeUntilSale / 1000 / 60); // Calculate total minutes
+    const seconds = Math.floor((timeUntilSale / 1000) % 60); // Calculate remaining seconds
 
-    console.log(`Waiting ${Math.ceil(timeUntilSale / 1000)} seconds until the flash sale starts.`);
+    console.log(`Waiting ${minutes} minutes and ${seconds} seconds until the flash sale starts.`);
 
     // Wait until the flash sale starts
     await delay(timeUntilSale);
 
-    // Function to check the price and attempt a purchase
+    // Main function to check the price and attempt to purchase
     async function checkPriceAndPurchase() {
         try {
             console.log('Navigating to the product page...');
-            // Navigate to the product page with increased timeout
             await page.goto(productUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
             console.log('Waiting for the page to fully load...');
-            // Ensure that the page is fully loaded
-            await page.waitForFunction(() => {
-                return document.readyState === 'complete';
-            }, { timeout: 60000 });
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 60000 });
 
-            // Check if the necessary elements are available
+            // Check for the price element
             const priceSelector = '.sale-price'; // Replace with the actual price selector
             const buyButtonSelector = '#__nuxt > div > div.pc__listing-detail-page > div.sku-wrapper > div.content-box > div.buyer-infos > div.opt-button-bar.info-item > button.van-button.van-button--primary.van-button--normal.opt-btn.red-btn'; // Replace with the actual buy button selector
 
             // Wait for the price element to be available
-            try {
-                await page.waitForSelector(priceSelector, { visible: true, timeout: 30000 }); // Increased timeout
-                console.log('Price element is available.');
-            } catch (error) {
-                console.error('Price element not found or not visible:', error);
-                return;
-            }
+            await page.waitForSelector(priceSelector, { visible: true, timeout: 30000 });
 
-            // Extract the product price from the page
-            const priceElement = await page.$(priceSelector);
-            const priceText = await page.evaluate(el => el.textContent, priceElement);
-            const currentPrice = parseFloat(priceText.replace(/[^0-9.-]+/g, '')); // Convert price to a number
+            // Extract the product price
+            const priceText = await page.$eval(priceSelector, el => el.textContent);
+            const currentPrice = parseFloat(priceText.replace(/[^0-9.-]+/g, ''));
 
             console.log(`Current price: Ksh. ${currentPrice}`);
 
-            // If the price is less than or equal to the desired price, proceed to purchase
+            // If the price is within the desired range, attempt to purchase
             if (currentPrice <= desiredPrice) {
                 console.log('Price is within the desired range, attempting to purchase...');
 
@@ -208,44 +229,39 @@ function askQuestion(query) {
                             return;
                         }
 
+                        // Add a manual delay to wait for any further actions or changes
+                        await delay(1500);
                         // Click the button inside the modal
                         console.log('Clicking the button inside the modal...');
                         await checkoutPage.click(modalButtonSelector, { delay: 100 });
 
                         // Add a manual delay to wait for any further actions or changes
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        await delay(5000);
 
                         await checkoutPage.screenshot({ path: 'after-modal-click.png' });
                         console.log('Button clicked inside the modal successfully.');
 
-
                     } catch (error) {
                         console.error('Modal or button inside the modal not found, not visible, or clicking failed:', error);
+                        await checkoutPage.screenshot({ path: 'modal-not-found.png' }); // Screenshot if the modal fails to load
                     }
 
-
                     console.log('Purchase completed or attempted.');
-                    // Close the browser after purchase
+                    // Close the browser after purchase if needed
                     // await browser.close();
                 } else {
                     console.error('Checkout tab not found.');
                 }
-
             } else {
                 console.log('Price is still too high. Checking again in 5 seconds...');
                 setTimeout(checkPriceAndPurchase, 5000);
             }
         } catch (error) {
-            console.error('Error checking price or making purchase:', error);
+            console.error('An error occurred during the purchase process:', error);
         }
     }
 
-    // Delay function for waiting
-    function delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    // Start the price check and purchase process
-    await checkPriceAndPurchase();
+    // Start the checking and purchasing process
+    checkPriceAndPurchase();
 
 })();
