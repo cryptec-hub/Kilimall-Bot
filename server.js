@@ -88,6 +88,7 @@ function askQuestion(query) {
     }
 
     // Automate the login process
+    console.log("Filling in log in details");
     await page.type('input[name="account"]', email, { delay: 100 });
     await page.type('input[name="password"]', password, { delay: 100 });
     await page.click('#__nuxt > div > div.login-wrapper > div > div:nth-child(1) > div > form > div.submit-button > button');
@@ -97,12 +98,15 @@ function askQuestion(query) {
 
     // Calculate time until flash sale starts
     const timeUntilSale = getTimeUntil(saleHour, saleMinute);
-    console.log(`Waiting ${Math.floor(timeUntilSale / 1000 / 60)} minutes until the flash sale starts.`);
+    const minutes = Math.floor(timeUntilSale / 1000 / 60); // Calculate total minutes
+    const seconds = Math.floor((timeUntilSale / 1000) % 60); // Calculate remaining seconds
+
+    console.log(`Waiting ${minutes} minutes and ${seconds} seconds until the flash sale starts.`);
 
     // Wait until the flash sale starts
     await delay(timeUntilSale);
 
-    // Function to check the price and attempt a purchase
+    // Main function to check the price and attempt to purchase
     async function checkPriceAndPurchase() {
         try {
             console.log('Navigating to the product page...');
@@ -128,66 +132,133 @@ function askQuestion(query) {
             if (currentPrice <= desiredPrice) {
                 console.log('Price is within the desired range, attempting to purchase...');
 
-                await page.waitForSelector(buyButtonSelector, { visible: true, timeout: 10000 });
+                // Wait for the "Buy Now" button text to appear
+                await page.waitForFunction(
+                    (selector, text) => {
+                        const button = document.querySelector(selector);
+                        return button && button.textContent.includes(text);
+                    },
+                    { timeout: 30000 },
+                    buyButtonSelector,
+                    'Buy Now'
+                );
 
-                // Listen for a new page (tab) to open
-                const [newPage] = await Promise.all([
-                    new Promise(resolve => browser.once('targetcreated', target => resolve(target.page()))),
-                    page.click(buyButtonSelector), // Click the button that triggers the new tab
-                ]);
+                console.log('Buy Now button is available, clicking it.');
+                // Click the "Buy Now" button
+                await page.click(buyButtonSelector);
 
-                console.log('Navigating to checkout...');
+                console.log('Waiting for the checkout page to load...');
 
-                // Wait for the new tab to be fully loaded
-                await newPage.waitForNavigation({ waitUntil: 'networkidle2' });
+                // Wait a bit to ensure the new tab has time to open
+                await delay(2000);
 
-                const purchaseButtonSelector = '#__nuxt > div > div.pc__order-checkout > div.order-card.price-card > div.place-order > button';
-                await newPage.waitForSelector(purchaseButtonSelector, { visible: true, timeout: 60000 });
+                // Get all open pages (tabs)
+                const pages = await browser.pages();
 
-                await newPage.click(purchaseButtonSelector);
+                // Find the checkout tab by URL
+                const checkoutPage = pages.find(p => p.url().includes('https://www.kilimall.co.ke/checkout'));
 
-                console.log('Attempting to complete the purchase...');
+                if (checkoutPage) {
+                    console.log('Checkout tab found. Switching to checkout tab...');
 
-                // Handle any modals or confirmations in the new tab
-                const modalSelector = '#__nuxt > div > div.van-popup.van-popup--round.van-popup--center > div';
-                const modalButtonSelector = '#__nuxt > div > div.van-popup.van-popup--round.van-popup--center > div > div > button';
+                    // Bring the checkout page to the foreground
+                    await checkoutPage.bringToFront();
 
-                // Debugging step: Take a screenshot before waiting for the modal
-                await newPage.screenshot({ path: 'before-waiting-for-modal.png' });
+                    // Selector for the purchase button on the checkout page
+                    const purchaseButtonSelector = '#__nuxt > div > div.pc__order-checkout > div.order-card.price-card > div.place-order > button';
 
-                try {
-                    console.log('Waiting for the modal to appear...');
-                    await newPage.waitForSelector(modalSelector, { visible: true, timeout: 60000 });
-                    await newPage.screenshot({ path: 'before-with-modal.png' });
-                    console.log('Modal is visible.');
-
-                    await newPage.waitForSelector(modalButtonSelector, { visible: true, timeout: 60000 });
-
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-
-                    const isButtonEnabled = await newPage.$eval(modalButtonSelector, button => !button.disabled);
-                    if (isButtonEnabled) {
-                        await newPage.click(modalButtonSelector);
-                        console.log('Purchase confirmed!');
-                        await newPage.screenshot({ path: 'after-clicking-the-modal.png' });
-                    } else {
-                        console.error('Purchase button is disabled.');
+                    // Wait for the button to be available and visible
+                    try {
+                        await checkoutPage.waitForSelector(purchaseButtonSelector, { visible: true, timeout: 30000 });
+                        console.log('Purchase button is visible.');
+                    } catch (error) {
+                        console.error('Purchase button not found or not visible:', error);
+                        return;
                     }
-                } catch (error) {
-                    console.error('Modal or button inside the modal did not appear or took too long to load:', error);
-                    await newPage.screenshot({ path: 'modal-not-found.png' }); // Screenshot if the modal fails to load
-                }
 
+                    // Ensure the button is in view and clickable
+                    console.log('Ensuring the button is in view and not covered by other elements...');
+                    await checkoutPage.evaluate((selector) => {
+                        const button = document.querySelector(selector);
+                        if (button) {
+                            button.scrollIntoView();
+                            button.style.display = 'block';  // Ensuring the button is not hidden
+                        }
+                    }, purchaseButtonSelector);
+
+                    // Wait briefly to ensure all animations or dynamic changes are complete
+                    await delay(1000);
+
+                    // Attempt to click the purchase button using a more robust method
+                    console.log('Clicking the purchase button...');
+                    try {
+                        await checkoutPage.evaluate((selector) => {
+                            const button = document.querySelector(selector);
+                            if (button) {
+                                button.click();
+                            }
+                        }, purchaseButtonSelector);
+                    } catch (error) {
+                        console.error('Failed to click the purchase button:', error);
+                        return;
+                    }
+
+                    // Wait for the modal to appear
+                    const modalSelector = '#__nuxt > div > div.van-popup.van-popup--round.van-popup--center > div';
+                    const modalButtonSelector = '#__nuxt > div > div.van-popup.van-popup--round.van-popup--center > div > div > button';
+
+                    try {
+                        console.log('Waiting for the modal to appear...');
+                        await checkoutPage.waitForSelector(modalSelector, { visible: true, timeout: 30000 });
+                        console.log('Modal is visible.');
+
+                        // Ensure the modal button is visible and interactable
+                        await checkoutPage.waitForSelector(modalButtonSelector, { visible: true, timeout: 30000 });
+                        console.log('Modal button is visible and interactable.');
+
+                        await checkoutPage.screenshot({ path: 'before-modal-click.png' });
+
+                        // Verify if the button is not disabled
+                        const isButtonEnabled = await checkoutPage.evaluate((selector) => {
+                            const button = document.querySelector(selector);
+                            return button && !button.disabled;
+                        }, modalButtonSelector);
+
+                        if (!isButtonEnabled) {
+                            console.error('Modal button is present but disabled.');
+                            return;
+                        }
+
+                        // Click the button inside the modal
+                        console.log('Clicking the button inside the modal...');
+                        await delay(3000);
+                        await checkoutPage.click(modalButtonSelector, { delay: 100 });
+
+                        // Add a manual delay to wait for any further actions or changes
+                        await delay(10000);
+
+                        await checkoutPage.screenshot({ path: 'after-modal-click.png' });
+                        console.log('Button clicked inside the modal successfully.');
+
+                    } catch (error) {
+                        console.error('Modal or button inside the modal not found, not visible, or clicking failed:', error);
+                        await checkoutPage.screenshot({ path: 'modal-not-found.png' }); // Screenshot if the modal fails to load
+                    }
+
+                    console.log('Purchase completed or attempted.');
+                    // Close the browser after purchase if needed
+                    // await browser.close();
+                } else {
+                    console.error('Checkout tab not found.');
+                }
             } else {
                 console.log('Price is still too high. Checking again in 5 seconds...');
                 setTimeout(checkPriceAndPurchase, 5000);
             }
         } catch (error) {
-            console.error('Error during the purchase process:', error);
+            console.error('An error occurred during the purchase process:', error);
         }
     }
-
-
 
     // Start the price check and purchase process
     await checkPriceAndPurchase();
