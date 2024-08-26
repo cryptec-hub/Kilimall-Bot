@@ -21,7 +21,7 @@ function getTimeUntil(targetHour, targetMinute) {
         target.setDate(target.getDate() + 1);
     }
 
-    return target.getTime() - now.getTime();
+    return target.getTime() - now.getTime() - 100;
 }
 
 // Promisified readline function to ask user input
@@ -151,14 +151,18 @@ function askQuestion(query) {
                 try {
                     console.log('Waiting for the modal to appear...');
                     await newPage.waitForSelector(modalSelector, { visible: true, timeout: 60000 });
+                    await newPage.screenshot({ path: 'before-with-modal.png' });
                     console.log('Modal is visible.');
 
                     await newPage.waitForSelector(modalButtonSelector, { visible: true, timeout: 60000 });
+
+                    await new Promise(resolve => setTimeout(resolve, 2000));
 
                     const isButtonEnabled = await newPage.$eval(modalButtonSelector, button => !button.disabled);
                     if (isButtonEnabled) {
                         await newPage.click(modalButtonSelector);
                         console.log('Purchase confirmed!');
+                        await newPage.screenshot({ path: 'after-clicking-the-modal.png' });
                     } else {
                         console.error('Purchase button is disabled.');
                     }
