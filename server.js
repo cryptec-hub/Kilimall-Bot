@@ -45,8 +45,15 @@ function askQuestion(query) {
 
     // Configure Puppeteer to run in headless mode and optimize performance
     const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        headless: true,  // Set to false if you want to see the browser UI
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-blink-features=AutomationControlled'
+        ],
     });
     const page = await browser.newPage();
 
