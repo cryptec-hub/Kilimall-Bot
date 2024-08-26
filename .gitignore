@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 # Node.js dependencies
 node_modules/
+=======
+# Logs
+logs
+>>>>>>> 574d6054169ccfdfadb8ad654a15ab36ca7c6977
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,6 +12,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+<<<<<<< HEAD
 # Environment variables
 .env
 .env.local
@@ -120,11 +126,24 @@ Desktop.ini
 
 # IDEs and editors
 .idea/
+=======
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+>>>>>>> 574d6054169ccfdfadb8ad654a15ab36ca7c6977
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+<<<<<<< HEAD
 
 # Debug files
 *.stackdump
@@ -195,3 +214,6 @@ yarn.lock
 # Temporary backup files
 *.bak
 *.tmp
+=======
+.env
+>>>>>>> 574d6054169ccfdfadb8ad654a15ab36ca7c6977
